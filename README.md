@@ -1,5 +1,5 @@
 <h1 align="center">
-🚀 Telegram Bot Installer - HOKAGE LEGEND
+🚀 Telegram Bot Installer - KAISAR VPN
 </h1>
 
 <p align="center">
@@ -31,6 +31,6 @@
 ```bash
 cd /root
 rm -f install-boot
-wget https://github.com/hokagelegend9999/Telegram-bot/raw/refs/heads/main/install-boot
+wget https://github.com/KAISARVPN/bot/raw/refs/heads/main/install-boot
 chmod +x install-boot
 ./install-boot

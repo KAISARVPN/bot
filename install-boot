@@ -8,10 +8,8 @@
 # dan meningkatkan keandalan instalasi.
 
 # --- Konfigurasi ---
-BOT_REPO_URL="https://github.com/KAISARVPN/bot.git"
-IP_REPO_URL="https://github.com/KAISARVPN/ip.git"
+REPO_URL="https://github.com/KAISARVPN/bot.git"
 APP_DIR="/opt/hokage-bot"
-IP_DIR="/opt/hokage-bot-ip"
 SERVICE_FILE="/etc/systemd/system/hokage-bot.service"
 SUDOERS_FILE="/etc/sudoers.d/hokage-bot"
 
@@ -38,70 +36,6 @@ show_header() {
     echo
 }
 
-# Fungsi untuk mendapatkan daftar IP dari repo GitHub
-get_allowed_ips() {
-    echo -e "${YELLOW}--- Mengambil daftar IP dari GitHub ---${NC}"
-    
-    # Hapus direktori IP lama jika ada
-    rm -rf "$IP_DIR"
-    
-    # Clone repo IP dari GitHub
-    echo "> Mengunduh daftar IP dari GitHub..."
-    git clone "$IP_REPO_URL" "$IP_DIR"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}GAGAL: Tidak bisa mengunduh daftar IP dari GitHub.${NC}"
-        echo -e "${YELLOW}Menggunakan daftar IP default...${NC}"
-        return 1
-    fi
-    
-    # Cari file yang berisi daftar IP (bisa berupa .txt, .json, atau file teks lain)
-    IP_FILE=""
-    for file in "$IP_DIR"/*.txt "$IP_DIR"/*.json "$IP_DIR"/*.list "$IP_DIR"/allowed_ips* "$IP_DIR"/ips*; do
-        if [ -f "$file" ]; then
-            IP_FILE="$file"
-            break
-        fi
-    done
-    
-    if [ -z "$IP_FILE" ] || [ ! -f "$IP_FILE" ]; then
-        echo -e "${YELLOW}File daftar IP tidak ditemukan dalam repositori.${NC}"
-        return 1
-    fi
-    
-    echo "> File IP ditemukan: $(basename "$IP_FILE")"
-    
-    # Ekstrak IP dari file (format bisa bervariasi)
-    ALLOWED_IPS=""
-    
-    # Coba berbagai format
-    if [[ "$IP_FILE" == *.json ]]; then
-        # Format JSON
-        if command -v jq &> /dev/null; then
-            ALLOWED_IPS=$(jq -r '.allowed_ips[]? // .ips[]? // .[]' "$IP_FILE" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
-        fi
-    else
-        # Format teks biasa (satu IP per baris, atau dipisahkan koma)
-        ALLOWED_IPS=$(grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?' "$IP_FILE" | tr '\n' ',' | sed 's/,$//')
-    fi
-    
-    # Jika masih kosong, coba ambil semua yang mirip IP
-    if [ -z "$ALLOWED_IPS" ]; then
-        ALLOWED_IPS=$(grep -E '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "$IP_FILE" | grep -v '^#' | awk '{print $1}' | tr '\n' ',' | sed 's/,$//')
-    fi
-    
-    # Validasi minimal satu IP ditemukan
-    if [ -n "$ALLOWED_IPS" ]; then
-        echo -e "${GREEN}✓ Daftar IP berhasil diambil dari GitHub.${NC}"
-        echo "> IP yang diizinkan: $ALLOWED_IPS"
-        echo "$ALLOWED_IPS"
-        return 0
-    else
-        echo -e "${YELLOW}Tidak ada IP valid yang ditemukan dalam file.${NC}"
-        return 1
-    fi
-}
-
 # FASE 1: Pembersihan Total
 run_cleanup() {
     echo -e "${YELLOW}--- FASE 1: Menghapus Instalasi Lama ---${NC}"
@@ -115,7 +49,6 @@ run_cleanup() {
 
     echo "> Menghapus direktori, layanan, dan file izin lama..."
     rm -rf "$APP_DIR"
-    rm -rf "$IP_DIR"
     rm -f "$SERVICE_FILE"
     rm -f "$SUDOERS_FILE"
     
@@ -137,17 +70,7 @@ run_install() {
     fi
     echo
 
-    # 2. Ambil daftar IP dari GitHub
-    ALLOWED_IPS=$(get_allowed_ips)
-    
-    # Jika gagal ambil dari GitHub, gunakan IP default
-    if [ $? -ne 0 ] || [ -z "$ALLOWED_IPS" ]; then
-        echo -e "${YELLOW}Menggunakan daftar IP default...${NC}"
-        ALLOWED_IPS="127.0.0.1,192.168.1.1"
-        echo "> IP default yang diizinkan: $ALLOWED_IPS"
-    fi
-
-    # 3. Instal Dependensi Sistem
+    # 2. Instal Dependensi Sistem
     echo "> Menginstal dependensi sistem..."
     apt-get update
     apt-get install -y git python3-venv python3-pip jq at mariadb-server
@@ -157,49 +80,25 @@ run_install() {
     fi
     echo -e "${GREEN}✓ Dependensi sistem terinstal.${NC}"
     
-    # 4. Clone Repositori BOT dari GitHub
-    echo "> Mengunduh semua file bot dari repositori..."
+    # 3. Clone Repositori dari GitHub
+    echo "> Mengunduh semua file terbaru dari repositori Anda..."
     mkdir -p "$APP_DIR"
-    git clone "$BOT_REPO_URL" "$APP_DIR"
+    git clone "$REPO_URL" "$APP_DIR"
     if [ $? -ne 0 ]; then
-        echo -e "${RED}GAGAL: Tidak bisa mengunduh repositori bot. Pastikan URL repositori benar dan koneksi internet stabil.${NC}"; exit 1;
+        echo -e "${RED}GAGAL: Tidak bisa mengunduh repositori. Pastikan URL repositori benar dan koneksi internet stabil.${NC}"; exit 1;
     fi
-    echo -e "${GREEN}✓ Semua file bot berhasil diunduh.${NC}"
+    echo -e "${GREEN}✓ Semua file berhasil diunduh.${NC}"
 
-    # 5. Membuat File Konfigurasi (config.py) dengan daftar IP
-    echo "> Membuat file konfigurasi (config.py) dengan daftar IP..."
+    # 4. Membuat File Konfigurasi (config.py)
+    echo "> Membuat file konfigurasi (config.py)..."
     cat <<EOF > "${APP_DIR}/config.py"
 # Dibuat otomatis oleh installer
 BOT_TOKEN = "${BOT_TOKEN}"
 ADMIN_TELEGRAM_ID = ${ADMIN_ID}
-ALLOWED_IPS = ["${ALLOWED_IPS//,/\", \""}]
-
-# Fungsi untuk memeriksa IP
-def is_ip_allowed(ip_address):
-    """
-    Memeriksa apakah IP diizinkan mengakses bot
-    """
-    import socket
-    
-    # Konversi IP ke format standar
-    try:
-        # Jika menggunakan socket, pastikan format IP benar
-        for allowed_ip in ALLOWED_IPS:
-            if '/' in allowed_ip:
-                # Jika menggunakan CIDR notation (perlu implementasi subnet check)
-                # Untuk sederhana, bandingkan langsung
-                if ip_address.startswith(allowed_ip.split('/')[0]):
-                    return True
-            else:
-                if ip_address == allowed_ip:
-                    return True
-        return False
-    except:
-        return False
 EOF
-    echo -e "${GREEN}✓ File config.py berhasil dibuat dengan daftar IP.${NC}"
+    echo -e "${GREEN}✓ File config.py berhasil dibuat.${NC}"
 
-    # 6. Menyiapkan Lingkungan Python
+    # 5. Menyiapkan Lingkungan Python
     echo "> Menyiapkan virtual environment & menginstal library..."
     python3 -m venv "${APP_DIR}/venv"
     source "${APP_DIR}/venv/bin/activate"
@@ -214,14 +113,14 @@ EOF
     fi
     echo -e "${GREEN}✓ Lingkungan Python siap.${NC}"
     
-    # 7. Mengatur Izin
+    # 6. Mengatur Izin
     echo "> Memberikan izin eksekusi & sudo..."
     chmod +x ${APP_DIR}/*.sh
     echo "root ALL=(ALL) NOPASSWD: ${APP_DIR}/*.sh" > "$SUDOERS_FILE"
     chmod 440 "$SUDOERS_FILE"
     echo -e "${GREEN}✓ Izin berhasil dikonfigurasi.${NC}"
 
-    # 8. Membuat dan Mengaktifkan Layanan Systemd
+    # 7. Membuat dan Mengaktifkan Layanan Systemd
     echo "> Membuat file layanan systemd..."
     cat <<EOF > ${SERVICE_FILE}
 [Unit]
@@ -234,7 +133,6 @@ WorkingDirectory=${APP_DIR}
 ExecStart=${APP_DIR}/venv/bin/python3 main.py
 Restart=always
 RestartSec=5
-Environment="ALLOWED_IPS=${ALLOWED_IPS}"
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -266,5 +164,3 @@ echo -e "${GREEN}=====================================================${NC}"
 echo
 echo "Selamat! Bot Anda sekarang berjalan."
 echo -e "Untuk memeriksa status, gunakan: ${YELLOW}systemctl status hokage-bot.service${NC}"
-echo
-echo "Daftar IP yang diizinkan diambil dari: $IP_REPO_URL"
